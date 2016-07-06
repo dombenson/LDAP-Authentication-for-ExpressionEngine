@@ -9,6 +9,8 @@ $lang = array(
 	'ldap_search_password'      => 'LDAP password (leave blank for anonymous binding)',
 	'ldap_username_attribute'   => 'Attribute in the directory to identify your users',
 	'ldap_character_encode'     => 'LDAP encoding type',
+	'ldap_require_group'        => 'LDAP group membership to check (leave blank to disable)',
+	'ldap_group_attribute'      => 'Attribute in the directory to identify user group membership',
 	'use_ldap_account_creation' => 'Use LDAP for account creation',
 	'created_user_group'        => 'Group ID to assign newly created users',
 

@@ -64,6 +64,8 @@ class Nce_ldap_ext {
 	var $ldap_search_password      = 'ldap_search_password'; // Change to your LDAP search password
 	var $ldap_username_attribute   = 'ldap_username_attribute'; // Change to your LDAP username attribute
 	var $ldap_character_encode     = 'Windows-1252';
+	var $ldap_require_group	       = '';
+	var $ldap_group_attribute      = 'memberOf';
 	var $no_ldap_login_message     = 'LDAP authentication seems to be down at the moment. Please contact your administrator.';
 	var $first_time_login_message  = 'This is your first time logging in! Your account has been automatically created for you, but your administrator may still need to alter your settings. Please contact them if you require more access.';
 	var $created_user_group        = '5'; // User group id (members)
@@ -97,6 +99,8 @@ class Nce_ldap_ext {
 		$settings['ldap_search_password']      = $this->ldap_search_password;
 		$settings['ldap_username_attribute']   = $this->ldap_username_attribute;
 		$settings['ldap_character_encode']     = $this->ldap_character_encode;
+		$settings['ldap_require_group']        = $this->ldap_require_group;
+		$settings['ldap_group_attribute']      = $this->ldap_group_attribute;
 		$settings['no_ldap_login_message']     = $this->no_ldap_login_message;
 		$settings['first_time_login_message']  = $this->first_time_login_message;
 		$settings['created_user_group']        = $this->created_user_group;
@@ -167,6 +171,8 @@ class Nce_ldap_ext {
 		$settings['ldap_search_password']      = $this->ldap_search_password;
 		$settings['ldap_username_attribute']   = $this->ldap_username_attribute;
 		$settings['ldap_character_encode']     = $this->ldap_character_encode;
+		$settings['ldap_require_group']        = $this->ldap_require_group;
+		$settings['ldap_group_attribute']      = $this->ldap_group_attribute;
 		$settings['use_ldap_account_creation'] = array('r', array('yes' => 'yes_ldap_account_creation',
 		                                                           'no'  => 'no_ldap_account_creation'),
 		                                                'yes');
@@ -327,9 +333,15 @@ class Nce_ldap_ext {
 
 	function authenticate_user($conn, $username, $password, $ldap_username_attribute, $ldap_search_base)
 	{
-		$this->debug_print('Searching for attribute '.$ldap_username_attribute.'='.$username.' ...');
+		$ldap_search_string = ldap_escape($ldap_username_attribute, null, LDAP_ESCAPE_FILTER).'='.ldap_escape($username, null, LDAP_ESCAPE_FILTER);
+		if(!empty($this->settings['ldap_require_group']) && !empty($this->settings['ldap_group_attribute']))
+		{
+			$ldap_group_search = ldap_escape($this->settings['ldap_group_attribute'], null, LDAP_ESCAPE_FILTER).'='.ldap_escape($this->settings['ldap_require_group'], null, LDAP_ESCAPE_FILTER);
+			$ldap_search_string = "(&($ldap_search_string)($ldap_group_search))";
+		}
+		$this->debug_print('Searching for attribute '.$ldap_search_string.' ...');
 		// Search username entry
-		$result = ldap_search($conn, $ldap_search_base, $ldap_username_attribute.'='.$username);
+		$result = ldap_search($conn, $ldap_search_base, $ldap_search_string);
 		$this->debug_print('Search result is: '.$result);
 
 		// Search not successful (server down?), so do nothing - standard MySQL authentication can take over
