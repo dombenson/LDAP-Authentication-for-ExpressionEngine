@@ -217,6 +217,7 @@ class Nce_ldap_ext {
 		{
 			$connection = $this->create_connection($ldap_host, $this->settings['ldap_port'], $this->settings['ldap_search_user'], $this->settings['ldap_search_password']);
 			$result = $this->authenticate_user($connection, $provided_username, $provided_password, $this->settings['ldap_username_attribute'], $this->settings['ldap_search_base']);
+			$this->close_connection($connection);
 			if ($result['authenticated'])
 				break;
 		}
@@ -236,7 +237,6 @@ class Nce_ldap_ext {
 		{
 			$this->debug_print('Could not authenticate username \''.$provided_username.'\' with LDAP');
 		}
-		$this->close_connection($connection);
 
 		if ($this->debug)
 			exit();
@@ -248,17 +248,28 @@ class Nce_ldap_ext {
 
 	function sync_user_details($user_info)
 	{
-			// Sync EE password to match LDAP (if account exists)
-			$encrypted_password = $this->EE->functions->hash(stripslashes($user_info['password']));
-			$sql = 'UPDATE exp_members SET password = \''.$this->EE->db->escape_str($encrypted_password).'\' WHERE username = \''.$this->EE->db->escape_str($user_info['username']).'\'';
+                $sql = 'SELECT member_id FROM exp_members WHERE username = \''.$this->EE->db->escape_str($user_info['username']).'\'';
+		$query = $this->EE->db->query($sql);
+		if ($query->num_rows === 1)
+		{
+			$row = $query->fetch_row();
+			$memberId = $row[0];
+			// Sync EE password to match LDAP 
+			$hashed_pair = $this->EE->auth->hash_password(stripslashes($user_info['password']));
+			$encrypted_password = $hashed_pair["password"];
+			$salt = $hashed_pair["salt"];
+			$sql = 'UPDATE exp_members SET password = \''.$this->EE->db->escape_str($encrypted_password).'\', salt = \''.$this->EE->db->escape_str($salt).'\' WHERE member_id = \''.$this->EE->db->escape_str($memberId).'\'';
 			$this->debug_print('Updating user with SQL: '.$sql);
 			$this->EE->db->query($sql);
-
+		}
+		elseif($query->num_rows === 0)
+		{
 			// now we might want to do some EE account creation
 			if ($this->settings['use_ldap_account_creation'] === 'yes')
 			{
-				$this->create_ee_user($user_info, $encrypted_password);
+				$this->create_ee_user($user_info);
 			}
+		}
 
 	}
 
@@ -266,7 +277,7 @@ class Nce_ldap_ext {
 // ----------------------
 
 
-	function create_ee_user($user_info, $encrypted_password)
+	function create_ee_user($user_info)
 	{
 		$sql = 'SELECT \'username\' FROM exp_members WHERE username = \''.$this->EE->db->escape_str($user_info['username']).'\'';
 		$this->debug_print('Checking for existing user with SQL: '.$sql);
@@ -276,10 +287,11 @@ class Nce_ldap_ext {
 		if ($query->num_rows === 0)
 		{
 			$this->debug_print('Using LDAP for account creation...');
+			$data = $this->EE->auth->hash_password(stripslashes($user_info['password']));
 
 			$data['screen_name']      = $user_info['cn'][0];
 			$data['username']         = $user_info['username'];
-			$data['password']         = $encrypted_password;
+
 			$data['email']            = $user_info['mail'][0];
 			$data['ip_address']       = '0.0.0.0';
 			$data['unique_id']        = $this->EE->functions->random('encrypt');
@@ -296,17 +308,11 @@ class Nce_ldap_ext {
 			$member_id = $this->EE->member_model->create_member($data);
 			if ($member_id > 0) // update other relevant fields
 			{
-				$sql = 'UPDATE exp_members SET photo_filename = \'photo_'.$member_id.'.jpg\', photo_width = \'90\', photo_height = \'120\'';
-				$query = $this->EE->db->query($sql);
-
-				//$this->EE->db->query('INSERT INTO exp_member_data SET member_id = '.$this->EE->db->escape_str($member_id));
-				//$this->EE->db->query('INSERT INTO exp_member_homepage SET member_id = '.$this->EE->db->escape_str($member_id));
-
 				$this->EE->stats->update_member_stats();
 
-				$this->settings['mail_message'] = str_replace('{name}',     $user_info['cn'][0],    $this->settings['mail_message']);
-				$this->settings['mail_message'] = str_replace('{username}', $user_info['username'], $this->settings['mail_message']);
-				$this->settings['mail_message'] = str_replace('{host}',     $_SERVER['HTTP_HOST'],  $this->settings['mail_message']);
+				$mail_message = str_replace('{name}',     $user_info['cn'][0],    $this->settings['mail_message']);
+				$mail_message = str_replace('{username}', $user_info['username'], $mail_message);
+				$mail_message = str_replace('{host}',     $_SERVER['HTTP_HOST'],  $mail_message);
 
 				// Email the admin with the details of the new user
 				ini_set('SMTP', $this->settings['mail_host']);
@@ -315,7 +321,7 @@ class Nce_ldap_ext {
 				$success = mail(
 													$this->settings['admin_email'], 
 													'New member \''.$user_info['username'].'\' on http://'.$_SERVER['HTTP_HOST'],
-													$this->settings['mail_message'],
+													$mail_message,
 													$headers
 												);
 				$this->EE->session->userdata['ldap_message'] = $this->settings['first_time_login_message'];
