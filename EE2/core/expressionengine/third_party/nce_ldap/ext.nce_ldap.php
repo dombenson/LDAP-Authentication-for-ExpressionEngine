@@ -213,13 +213,27 @@ class Nce_ldap_ext {
 
 		// Multiple LDAP servers
 		$ldap_hosts = explode(',', $this->settings['ldap_host']);
+		$userFound = false;
 		foreach ($ldap_hosts as $ldap_host)
 		{
 			$connection = $this->create_connection($ldap_host, $this->settings['ldap_port'], $this->settings['ldap_search_user'], $this->settings['ldap_search_password']);
+			$userFound = $this->find_user($connection, $provided_username, $this->settings['ldap_username_attribute'], $this->settings['ldap_search_base']);
 			$result = $this->authenticate_user($connection, $provided_username, $provided_password, $this->settings['ldap_username_attribute'], $this->settings['ldap_search_base']);
 			$this->close_connection($connection);
-			if ($result['authenticated'])
+			if ($result['authenticated'] || $userFound)
 				break;
+		}
+
+		if($userFound)
+		{
+			// The purpose of this block is to allow fall-through only in the case that the user is not in scope for LDAP auth
+			// If the user 'should' be LDAP-authenticated, then block them if they are not in fact authorized.
+			if(!$result['authenticated'])
+			{
+				// Not authorized. Block login.
+				$this->EE->output->fatal_error('Account disabled', 0);
+				$this->EE->extensions->end_script = true;
+			}
 		}
 
 		if ($this->debug)
@@ -330,6 +344,19 @@ class Nce_ldap_ext {
 				exit('Could not create user account for '.$user_info['username'].'<br/>'."\n");
 			}
 		}
+	}
+
+	function find_user($conn, $username, $ldap_username_attribute, $ldap_search_base)
+	{
+		$ldap_search_string = ldap_escape($ldap_username_attribute, null, LDAP_ESCAPE_FILTER).'='.ldap_escape($username, null, LDAP_ESCAPE_FILTER);
+		$this->debug_print('Searching for attribute '.$ldap_search_string.' ...');
+		$result = ldap_search($conn, $ldap_search_base, $ldap_search_string);
+		$this->debug_print('Search result is: '.$result);
+		if (($result === FALSE) || (ldap_count_entries($conn, $result) < 1))
+		{
+			return false;
+		}
+		return true;
 	}
 
 
