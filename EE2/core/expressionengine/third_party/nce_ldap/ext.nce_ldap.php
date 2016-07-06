@@ -209,13 +209,8 @@ class Nce_ldap_ext {
          */
 	function member_process_reset_password()
 	{
-		$memberId = $this->EE->session->userdata('member_id');
-		$userNameRes = $this->EE->db->select('username')->where('member_id', $memberId)->get('members');
-		if(!$row = $userNameRes->first_row())
-		{
-			return;
-		}
-		$userName = $row->username;
+		$userName = $this->EE->input->post('username');
+		$this->debug_print("Checking $userName");
 		$ldap_hosts = explode(',', $this->settings['ldap_host']);
 		foreach ($ldap_hosts as $ldap_host)
 		{
@@ -223,10 +218,12 @@ class Nce_ldap_ext {
 			$userFound = $this->find_user($connection, $userName, $this->settings['ldap_username_attribute'], $this->settings['ldap_search_base']);
 			if($userFound)
 			{
-				$this->EE->show_error("Your password cannot be reset here");
+				$this->debug_print("Found");
+				show_error("Your password cannot be reset here");
 				$this->EE->extensions->end_script = true;
 			}
 		}
+		if($this->debug) exit();
 	}
 
 
@@ -273,7 +270,7 @@ class Nce_ldap_ext {
 			if(!$result['authenticated'])
 			{
 				// Not authorized. Block login.
-				$this->EE->output->fatal_error('Account disabled', 0);
+				show_error('Your account is not authorised here');
 				$this->EE->extensions->end_script = true;
 			}
 		}
@@ -383,7 +380,8 @@ class Nce_ldap_ext {
 			}
 			else
 			{
-				exit('Could not create user account for '.$user_info['username'].'<br/>'."\n");
+				show_error('Could not create user account for '.$user_info['username'].'<br/>'."\n");
+				$this->EE->extensions->end_script = true;
 			}
 		}
 	}
