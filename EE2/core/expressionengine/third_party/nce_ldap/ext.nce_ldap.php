@@ -107,7 +107,9 @@ class Nce_ldap_ext {
 
 		$hooks = array(
 			'login_authenticate_start'  => 'login_authenticate_start',
-			'member_member_login_start' => 'member_member_login_start'
+			'member_member_login_start' => 'member_member_login_start',
+			'member_process_reset_password' => 'member_process_reset_password',
+			'cp_member_reset_password' => 'cp_member_reset_password'
 		);
 
 		foreach ($hooks as $hook => $method)
@@ -185,6 +187,46 @@ class Nce_ldap_ext {
 		$settings['created_user_group']        = $this->created_user_group;
 
 		return $settings;
+	}
+
+// ----------------------
+
+        /**
+         * Called by the cp_member_reset_password hook
+         * NB that this hook is called *after* the reset, so the error is only informational
+         */
+        function cp_member_reset_password()
+	{
+		$this->member_process_reset_password();
+	}
+
+
+// ----------------------
+
+        /**
+         * Called by the member_process_reset_password hook
+         * NB that this hook is called *after* the reset, so the error is only informational
+         */
+	function member_process_reset_password()
+	{
+		$memberId = $this->EE->session->userdata('member_id');
+		$userNameRes = $this->EE->db->select('username')->where('member_id', $memberId)->get('members');
+		if(!$row = $userNameRes->first_row())
+		{
+			return;
+		}
+		$userName = $row->username;
+		$ldap_hosts = explode(',', $this->settings['ldap_host']);
+		foreach ($ldap_hosts as $ldap_host)
+		{
+			$connection = $this->create_connection($ldap_host, $this->settings['ldap_port'], $this->settings['ldap_search_user'], $this->settings['ldap_search_password']);
+			$userFound = $this->find_user($connection, $userName, $this->settings['ldap_username_attribute'], $this->settings['ldap_search_base']);
+			if($userFound)
+			{
+				$this->EE->show_error("Your password cannot be reset here");
+				$this->EE->extensions->end_script = true;
+			}
+		}
 	}
 
 
