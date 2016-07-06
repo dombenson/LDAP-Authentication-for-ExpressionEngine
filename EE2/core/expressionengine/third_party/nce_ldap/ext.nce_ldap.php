@@ -252,8 +252,8 @@ class Nce_ldap_ext {
 		$query = $this->EE->db->query($sql);
 		if ($query->num_rows === 1)
 		{
-			$row = $query->fetch_row();
-			$memberId = $row[0];
+			$row = $query->first_row();
+			$memberId = $row->member_id;
 			// Sync EE password to match LDAP 
 			$hashed_pair = $this->EE->auth->hash_password(stripslashes($user_info['password']));
 			$encrypted_password = $hashed_pair["password"];
